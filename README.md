@@ -1,6 +1,20 @@
 # ndseqpy
 Yet another n-dimensional sequence implementation with subclasses for list, bytearray, array.array and ctypes.
 
+Included in claases are:
+
+* NDArray       -- an array.array implementation
+* NDByteArray   -- a bytearray implementation
+
+Abstract classes:
+
+* NDSequence    -- an abstract sequence wrapper for enabling ndimensions
+* SequenceView  -- a view getter, setter and len using the base class methods
+
+Mixin classes:
+
+* NDMath
+
 
 ### example
 
