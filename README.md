@@ -14,7 +14,7 @@ Abstract classes:
 
 Mixin classes:
 
-* NDMath
+* NDMath        -- mixin operations for doing sequence item math.
 
 
 ### example
