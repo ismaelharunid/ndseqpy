@@ -23,6 +23,30 @@ isindexable = lambda items: hasattr(items, '__getitem__')
 isflat = lambda items: not any(isindexable(i) for i in items)
 product = lambda items: reduce(lambda a, b: a*b, items)
 
+
+class SequenceView(Sequence):
+  """
+  Return a read-only view of the sequence object *target*.
+  """
+  
+  _target   = None
+  _class    = None
+  
+  def __init__(self, target, use_class=None):
+    if use_class is None: use_class = target.__class__
+    self._target = target
+    self._class = use_class
+  
+  def __getitem__(self, index):
+    return self._class.__getitem__(self._target, index)
+  
+  def __setitem__(self, index, value):
+    return self._class.__setitem__(self._target, index, value)
+  
+  def __len__(self):
+    return self._class.__len__(self._target)
+
+
 def iter_shape(iterable, shape_info, force_type=None):
   if force_type:
     if not isinstance(force_type, type) and not callable(force_type):
@@ -103,6 +127,11 @@ class NDimSequence(object):
   _itemsize = None
   _casttype = None
   _strides  = None
+  _view     = None
+  
+  @property
+  def flat(self):
+    return self._view
   
   def _finalize(self, shape_info, shape, itemtype, itemsize, casttype
       , **kwargs):
@@ -117,7 +146,8 @@ class NDimSequence(object):
     self._itemtype  = itemtype
     self._itemsize  = itemsize
     self._casttype  = casttype
-    self._strides = reduce(lambda a, c: tuple(b*c for b in a)+(1,), (3,3,3), ())
+    self._strides   = reduce(lambda a, c: tuple(b*c for b in a)+(1,), shape, ())
+    self._view      = SequenceView(self._items, self.__class__.__bases__[-1])
   
   def __index__(self, key):
     """
