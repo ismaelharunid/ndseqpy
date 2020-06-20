@@ -3,8 +3,9 @@ Yet another n-dimensional sequence implementation with subclasses for list, byte
 
 Included in claases are:
 
-* NDArray       -- an array.array implementation
-* NDByteArray   -- a bytearray implementation
+* NDArray       -- an ndim array.array implementation
+* NDByteArray   -- an ndim bytearray implementation
+* NDList        -- an ndim list implementation
 
 Abstract classes:
 
