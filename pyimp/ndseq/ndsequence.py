@@ -22,6 +22,11 @@ issized     = lambda items: isinstance(items, Sized)
 isindexable = lambda items: hasattr(items, '__getitem__')
 isflat = lambda items: not any(isindexable(i) for i in items)
 product = lambda items: reduce(lambda a, b: a*b, items)
+shape2strides = lambda shape: reduce(lambda a, c: tuple(b*c for b in a)+(1,), shape, ())
+flatten_index = lambda index, strides, shape: \
+    sum((i%n)*s for (i,s) in zip(index,strides,shape))
+expand_index = lambda index, strides, shape: \
+    tuple((index//s)%n for (s,n) in zip(strides,shape))
 
 
 class SequenceView(Sequence):
@@ -45,6 +50,14 @@ class SequenceView(Sequence):
   
   def __len__(self):
     return self._class.__len__(self._target)
+
+
+def reshape(items, shape, itemtype=None, cls=None):
+  if itemtype is None:
+    itemtype = items.itemtype if hasattr(items, "itemtype") else int
+  if cls is None: cls = type(items)
+  shape_info = ShapeInfo()
+  return cls(iter_shape(items, shape_info), shape=shape)
 
 
 def iter_shape(iterable, shape_info, force_type=None):
@@ -92,18 +105,22 @@ def iter_shape(iterable, shape_info, force_type=None):
   else: # while not stopped:
     pass
   shape_info.shape = tuple(shape)
+  shape_info.strides = shape2strides(shape)
   shape_info.types  = tuple(types)
   shape_info.n_items = n_items
   shape_info.volume = product(shape) if shape else 0
   shape_info.irregular = shape_info.n_items != shape_info.volume
 
 
-def ShapeInfo__init__(self, n_items=0, volume=0, irregular=False, shape=(), types=()):
+def ShapeInfo__init__(self, n_items=0, volume=0, irregular=False
+    , shape=(), strides=[], types=()):
   self.n_items = n_items
   self.volume = volume
   self.irregular = irregular
   self.shape = shape
+  self.strides = strides
   self.types = types
+
 ShapeInfo__init__.__name__ = "__init__"
 
 ShapeInfo  = type( "ShapeInfo", (object,), 
@@ -111,43 +128,79 @@ ShapeInfo  = type( "ShapeInfo", (object,),
     , "volume":     None    # shape volume
     , "irregular":  None    # inconsistant axes sizes
     , "shape":      []      # the shape
+    , "strides":    []      # the strides of each axis
     , "types":      []      # item types
     , "__init__":   ShapeInfo__init__
     , "__repr__":   lambda s: "ShapeInfo({:s})" \
         .format(', '.join("{:s}={:s}".format(k, repr(getattr(s, k))) \
-        for k in ("n_items", "volume", "irregular", "shape", "types")))
+        for k in ("n_items", "volume", "irregular", "shape", "strides" \
+        , "types")))
     } )
 
 
-class NDimSequence(object):
+class NDSequence(object):
   
   _items    = None
   _shape    = None
+  _strides  = None
   _itemtype = None
   _itemsize = None
   _casttype = None
-  _strides  = None
   _view     = None
+  
+  @property
+  def casttype(self):
+    return self._casttype
   
   @property
   def flat(self):
     return self._view
   
+  @property
+  def itemsize(self):
+    return self._itemsize
+  
+  @property
+  def itemtype(self):
+    return self._itemtype
+  
+  @property
+  def shape(self):
+    return self._shape
+  
+  @property
+  def strides(self):
+    return self._strides
+  
   def _finalize(self, shape_info, shape, itemtype, itemsize, casttype
       , **kwargs):
+    if casttype is None:
+      casttype = itemtype
     if shape_info.irregular:
       print('irregular', shape_info.irregular)
     if shape and shape != shape_info.shape:
-      print('shape', shape, shape_info.shape)
+      #print('shape', shape, shape_info.shape)
+      strides = shape2strides(shape)
     else:
       shape = shape_info.shape
+      strides = shape_info.strides
+    # get the basest base
+    base = self.__class__
+    while issubclass(base, NDSequence):
+      base = base.__base__
     self._items     = self
     self._shape     = shape
     self._itemtype  = itemtype
     self._itemsize  = itemsize
     self._casttype  = casttype
-    self._strides   = reduce(lambda a, c: tuple(b*c for b in a)+(1,), shape, ())
-    self._view      = SequenceView(self._items, self.__class__.__bases__[-1])
+    self._strides   = strides
+    self._view      = SequenceView(self._items, base)
+  
+  def __cast__(self, value):
+    return self._casttype( value )
+  
+  def __value__(self, value):
+    return self._itemtype( value )
   
   def __index__(self, key):
     """
@@ -192,4 +245,18 @@ class NDimSequence(object):
     assert len(indexes) == len(values)
     foo = super()
     return tuple(foo.__setitem__(i, v) for (i, v) in zip(reversed(indexes), reversed(values)))
+  
+  def transpose(self, axes=-1):
+    return self.swapaxes( (0, axes % len(self.shape)) )
+  
+  def swapaxis(self, *axis_pairs):
+    strides, shape = self.strides, self.shape
+    n_self, n_shape  = len(self._items), len(shape)
+    remap = list(range(n_shape))
+    for (i0, i1) in axis_pairs:
+      remap[i0], remap[i1] = (remap[i1], remap[i0])
+    restrides = tuple(strides[i] for i in remap)
+    reshape = tuple(shape[i] for i in remap)
+    indexes = tuple(flatten_index(i, restrides, reshape) for i in range(n_self))
+    return type(self)(self.flat[indexes], shape=reshape, itemtype=self.itemtype)
 
