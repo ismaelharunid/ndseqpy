@@ -143,6 +143,7 @@ class NDSequence(object):
   _items    = None
   _shape    = None
   _strides  = None
+  _bytestrides = None
   _itemtype = None
   _itemsize = None
   _casttype = None
@@ -172,6 +173,14 @@ class NDSequence(object):
   def strides(self):
     return self._strides
   
+  @property
+  def itemstrides(self):
+    return self._strides
+  
+  @property
+  def bytestrides(self):
+    return self._bytestrides
+  
   def _finalize(self, shape_info, shape, itemtype, itemsize, casttype
       , **kwargs):
     if casttype is None:
@@ -188,12 +197,17 @@ class NDSequence(object):
     base = self.__class__
     while issubclass(base, NDSequence):
       base = base.__base__
+    bytesize = 4    # just anyold number but really this needs to be cross 
+                    # compatible wither wahtever the base class is.  No way 
+                    # to do this maybe.
+    bytestrides = tuple(s*bytesize for s in strides)
     self._items     = self
     self._shape     = shape
+    self._strides   = strides
+    self._bytestrides   = bytestrides
     self._itemtype  = itemtype
     self._itemsize  = itemsize
     self._casttype  = casttype
-    self._strides   = strides
     self._view      = SequenceView(self._items, base)
   
   def __cast__(self, value):
